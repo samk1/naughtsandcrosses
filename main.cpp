@@ -157,6 +157,70 @@ void boardchange(vector<mark> themarks) {
 		cout << "\n";
 	}
 
+//Calibration mode tracking function
+void trackcalib(Mat threshold, Mat HSV, Mat &cameraFeed) {
+
+	//create temporary image
+	Mat temp;
+	threshold.copyTo(temp);
+	vector <mark> peices;
+
+	vector< vector<Point> > contours;
+	vector<Vec4i> hierarchy;
+	//these two vectors needed for output of findContours
+
+	//find contours of filtered image using openCV findContours function
+	findContours(temp, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE);
+
+	//use moments method to find filtered object
+	double refArea = 0;
+	bool objectFound = false;
+
+	//checking that contours have been found
+	if (hierarchy.size() > 0) {
+		numObjects = hierarchy.size();
+		//if number of objects greater than MAX_NUM_OBJECTS- noisy filter
+		if (numObjects < MAX_NUM_OBJECTS) {
+			for (int index = 0; index >= 0; index = hierarchy[index][0]) {
+
+				Moments moment = moments((cv::Mat)contours[index]);
+				double area = moment.m00;
+
+				//check object is right size
+				if (area > MIN_OBJECT_AREA && area<MAX_OBJECT_AREA)
+				{
+					//store each object as a seperate peice
+					mark peice;
+
+					//set each peices position
+					peice.setxpos(moment.m10 / area);
+					peice.setypos(moment.m01 / area);
+
+					peices.push_back(peice);
+
+					objectFound = true;
+
+					refArea = area;
+				}
+
+				else objectFound = false;
+
+			}
+		}
+		//found an object
+		if (objectFound == true) {
+			putText(cameraFeed, "Tracking Object", Point(0, 50), 2, 1, Scalar(0, 255, 0), 2);
+			//draw object location on screen
+			drawObject(peices, cameraFeed);
+
+		}
+
+		else putText(cameraFeed, "TOO MUCH NOISE! ADJUST FILTER", Point(0, 50), 1, 2, Scalar(0, 0, 255), 2);
+	}
+
+}
+
+
 
 	//function to find objects in thresholded images
 void track(mark themarks, Mat threshold, Mat HSV, Mat &cameraFeed) {
@@ -268,6 +332,13 @@ int main(int argc, char* argv[])
 	capture.set(CV_CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT);
 	//start an infinite loop where webcam feed is copied to cameraFeed matrix
 	//all of our operations will be performed within this loop
+	bool calibration = true;
+
+	if (calibration) {
+		//create slider bars for HSV filtering
+		createTrackbars();
+	}
+
 
 	while (1) {
 		//store image to matrix
@@ -276,22 +347,20 @@ int main(int argc, char* argv[])
 		
 		//convert frame from BGR to HSV colorspace
 		cvtColor(cameraFeed, HSV, COLOR_BGR2HSV);
-
-
 		//set calibration mode to find min and max hsv values
-		bool calibration =false;
+		
 
 		if (calibration==true)
 		{
 			//trackbars for adjusting and finding right values (edit values in mark.cpp)
-			createTrackbars();
 			inRange(HSV, Scalar(H_MIN, S_MIN, V_MIN), Scalar(H_MAX, S_MAX, V_MAX), threshold);
-	
 			morphOps(threshold);
+			trackcalib(threshold, HSV, cameraFeed);
+
 			imshow("crosses", threshold);
-			imshow("naughts", threshold2);
 			imshow("OG", cameraFeed);
 		}
+
 		else
 		{
 			
